@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum Destination: String, Identifiable {
@@ -12,7 +13,7 @@ enum Destination: String, Identifiable {
         switch self {
         case .checkIns: "Check-in Heatmaps"
         case .accountBalances: "Account Balances"
-        case .monthlyCashFlow: "Monthly Cash Flow"
+        case .monthlyCashFlow: "Cash Flow"
         case .settings: "Settings"
         }
     }
@@ -27,126 +28,151 @@ enum Destination: String, Identifiable {
     }
 }
 
-struct RootView: View {
-    @State private var selection: Destination = .checkIns
+private enum SidebarGroup: String, CaseIterable, Identifiable {
+    case checkIns, bookkeeping
 
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isSidebarOpen = false
-    #endif
+    var id: Self { self }
 
-    var body: some View {
-        #if os(iOS)
-        if horizontalSizeClass == .compact {
-            compactNavigation
-        } else {
-            splitNavigation
+    var title: LocalizedStringKey {
+        switch self {
+        case .checkIns: "Check-ins"
+        case .bookkeeping: "Bookkeeping"
         }
-        #else
-        splitNavigation
-        #endif
     }
 
-    private var splitNavigation: some View {
-        NavigationSplitView {
-            SidebarView(selection: selection) { selection = $0 }
+    var destinations: [Destination] {
+        switch self {
+        case .checkIns: [.checkIns]
+        case .bookkeeping: [.accountBalances, .monthlyCashFlow]
+        }
+    }
+}
+
+struct RootView: View {
+    @Environment(LogbookStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var cashFlowCurrency: LedgerCurrency?
+    @State private var cashFlowMetric = CashFlowMetric.netIncome
+    @State private var balanceCurrency: LedgerCurrency?
+    @State private var checkInSelection: CheckInSelection = .allScenes
+    @State private var balanceAccountID: String?
+    @State private var selection: Destination?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    private struct Page: Equatable {
+        let destination: Destination?
+        let checkIn: CheckInSelection?
+    }
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SidebarView(selection: selection, onSelect: select)
                 .navigationTitle("Logbook")
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220)
         } detail: {
             screen
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar(removing: .sidebarToggle)
+        .onOpenURL(perform: open)
     }
 
     private var screen: some View {
-        DestinationView(destination: selection)
-            .navigationTitle(selection.title)
+        let page = Page(destination: selection, checkIn: selection == .checkIns ? checkInSelection : nil)
+        let reduceMotion = self.reduceMotion
+        return detailContent
+            .overlay {
+                PhaseAnimator([0.0, 0.18], trigger: reduceMotion ? nil : page) { opacity in
+                    Color(nsColor: .windowBackgroundColor).opacity(reduceMotion ? 0 : opacity)
+                } animation: { opacity in
+                    opacity == 0 ? .easeOut(duration: 0.16) : nil
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+            .navigationTitle(selection?.title ?? "Logbook")
+            .onChange(of: store.preferences.defaultCurrency) {
+                cashFlowCurrency = nil
+                balanceCurrency = nil
+            }
     }
 
-    #if os(iOS)
-    private var compactNavigation: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                NavigationStack {
-                    screen
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button {
-                                    setSidebar(open: true)
-                                } label: {
-                                    Label("Show sidebar", systemImage: "sidebar.left")
-                                }
-                            }
-                        }
-                }
-                .allowsHitTesting(!isSidebarOpen)
-                .accessibilityHidden(isSidebarOpen)
-
-                if isSidebarOpen {
-                    Color.black.opacity(0.35)
-                        .ignoresSafeArea()
-                        .onTapGesture { setSidebar(open: false) }
+    @ViewBuilder
+    private var detailContent: some View {
+        if let selection {
+            DestinationView(destination: selection, cashFlowCurrency: $cashFlowCurrency, cashFlowMetric: $cashFlowMetric,
+                            balanceCurrency: $balanceCurrency, checkInSelection: $checkInSelection,
+                            balanceAccountID: $balanceAccountID)
+        } else {
+            let greetingName = store.preferences.greetingName
+            TimelineView(.everyMinute) { context in
+                let greeting = WelcomeGreeting(date: context.date, displayName: greetingName)
+                HStack(spacing: 24) {
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 88, height: 88)
                         .accessibilityHidden(true)
-                        .transition(.opacity)
 
-                    VStack(spacing: 0) {
-                        HStack {
-                            Text("Logbook")
-                                .font(.headline)
-                            Spacer()
-                            Button {
-                                setSidebar(open: false)
-                            } label: {
-                                Label("Close sidebar", systemImage: "xmark")
-                                    .labelStyle(.iconOnly)
-                                    .frame(minWidth: 44, minHeight: 44)
-                            }
-                            .keyboardShortcut(.cancelAction)
-                        }
-                        .padding(.horizontal, 16)
-
-                        SidebarView(selection: selection) { destination in
-                            selection = destination
-                            setSidebar(open: false)
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: greeting.title)
+                            .font(.largeTitle.weight(.semibold))
+                            .accessibilityAddTraits(.isHeader)
+                        Text(verbatim: greeting.message)
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(width: min(300, geometry.size.width * 0.82))
-                    .background(.background, ignoresSafeAreaEdges: .vertical)
-                    .transition(.move(edge: .leading))
-                    .zIndex(1)
+                    .multilineTextAlignment(.leading)
                 }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .onDisappear { isSidebarOpen = false }
     }
 
-    private func setSidebar(open: Bool) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-            isSidebarOpen = open
-        }
+    private func select(_ destination: Destination?) {
+        if destination == .checkIns { checkInSelection = .allScenes }
+        if destination == .accountBalances { balanceAccountID = nil }
+        if destination == .monthlyCashFlow { cashFlowMetric = .netIncome }
+        guard selection != destination else { return }
+        selection = destination
     }
-    #endif
+
+    private func open(_ url: URL) {
+        guard url.scheme == "logbook", url.host == "scene" || url.host == "check-ins" else { return }
+        checkInSelection = LogbookLinks.sceneID(from: url).map(CheckInSelection.scene) ?? .allScenes
+        selection = .checkIns
+    }
 }
 
 private struct SidebarView: View {
-    let selection: Destination
-    let onSelect: (Destination) -> Void
+    let selection: Destination?
+    let onSelect: (Destination?) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    group("Check-ins", destinations: [.checkIns])
-                    group("Bookkeeping", destinations: [.accountBalances, .monthlyCashFlow])
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(SidebarGroup.allCases) { section in
+                            group(section.title, destinations: section.destinations)
+                        }
+                    }
+                    .padding(12)
+                    .frame(minHeight: viewport.size.height, alignment: .top)
+                    .background { deselectionTarget }
                 }
-                .padding(12)
             }
             Divider()
             row(.settings)
                 .padding(12)
+                .background { deselectionTarget }
         }
+    }
+
+    private var deselectionTarget: some View {
+        Color.clear
+            .contentShape(.rect)
+            .onTapGesture { onSelect(nil) }
+            .accessibilityHidden(true)
     }
 
     private func group(_ title: LocalizedStringKey, destinations: [Destination]) -> some View {
@@ -167,7 +193,7 @@ private struct SidebarView: View {
         Button {
             onSelect(destination)
         } label: {
-            Label(destination.title, systemImage: destination.icon)
+            Label(destination == .checkIns ? "Heatmaps" : destination.title, systemImage: destination.icon)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(.horizontal, 10)
                 .background {

@@ -1,7 +1,8 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 56;
 	objects = {
 
@@ -9,6 +10,22 @@
 		D00100000000000000000001 /* LogbookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000004 /* LogbookApp.swift */; };
 		D00100000000000000000002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000005 /* RootView.swift */; };
 		D00100000000000000000003 /* DestinationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000006 /* DestinationView.swift */; };
+		D00100000000000000000130 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000131 /* Assets.xcassets */; };
+		D0010000000000000000010E /* Editor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000010D /* Editor.swift */; };
+		D00100000000000000000110 /* CheckInsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000010F /* CheckInsView.swift */; };
+		D00100000000000000000114 /* FinanceChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000113 /* FinanceChart.swift */; };
+		D00100000000000000000116 /* AccountBalancesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000115 /* AccountBalancesView.swift */; };
+		D00100000000000000000118 /* CashFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000117 /* CashFlowView.swift */; };
+		D0010000000000000000011A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000119 /* SettingsView.swift */; };
+		D0010000000000000000011C /* CalendarKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000011B /* CalendarKeys.swift */; };
+		D0010000000000000000011F /* Records.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000011E /* Records.swift */; };
+		D00100000000000000000122 /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000121 /* Storage.swift */; };
+		D00100000000000000000124 /* Heatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000123 /* Heatmap.swift */; };
+		D00100000000000000000127 /* LogbookLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000126 /* LogbookLinks.swift */; };
+		D0010000000000000000012A /* FinanceReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000129 /* FinanceReports.swift */; };
+		D0010000000000000000012C /* CSV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000012B /* CSV.swift */; };
+		D0010000000000000000012E /* ImportPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0010000000000000000012D /* ImportPreview.swift */; };
+		D00100000000000000000133 /* WelcomeGreeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00100000000000000000132 /* WelcomeGreeting.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -16,13 +33,30 @@
 		D00100000000000000000005 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D00100000000000000000006 /* DestinationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationView.swift; sourceTree = "<group>"; };
 		D00100000000000000000007 /* Logbook.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Logbook.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D00100000000000000000131 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D0010000000000000000010D /* Editor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Editor.swift; sourceTree = "<group>"; };
+		D0010000000000000000010F /* CheckInsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInsView.swift; sourceTree = "<group>"; };
+		D00100000000000000000113 /* FinanceChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceChart.swift; sourceTree = "<group>"; };
+		D00100000000000000000115 /* AccountBalancesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountBalancesView.swift; sourceTree = "<group>"; };
+		D00100000000000000000117 /* CashFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CashFlowView.swift; sourceTree = "<group>"; };
+		D00100000000000000000119 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D0010000000000000000011B /* CalendarKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarKeys.swift; sourceTree = "<group>"; };
+		D0010000000000000000011E /* Records.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Records.swift; sourceTree = "<group>"; };
+		D00100000000000000000121 /* Storage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift; sourceTree = "<group>"; };
+		D00100000000000000000123 /* Heatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Heatmap.swift; sourceTree = "<group>"; };
+		D00100000000000000000126 /* LogbookLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogbookLinks.swift; sourceTree = "<group>"; };
+		D00100000000000000000129 /* FinanceReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinanceReports.swift; sourceTree = "<group>"; };
+		D0010000000000000000012B /* CSV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSV.swift; sourceTree = "<group>"; };
+		D0010000000000000000012D /* ImportPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreview.swift; sourceTree = "<group>"; };
+		D00100000000000000000132 /* WelcomeGreeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeGreeting.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		D00100000000000000000008 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -32,6 +66,7 @@
 			isa = PBXGroup;
 			children = (
 				D00100000000000000000010 /* Logbook */,
+				D0010000000000000000012F /* LogbookCore */,
 				D00100000000000000000011 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -42,14 +77,39 @@
 				D00100000000000000000004 /* LogbookApp.swift */,
 				D00100000000000000000005 /* RootView.swift */,
 				D00100000000000000000006 /* DestinationView.swift */,
+				D0010000000000000000010D /* Editor.swift */,
+				D0010000000000000000010F /* CheckInsView.swift */,
+				D00100000000000000000113 /* FinanceChart.swift */,
+				D00100000000000000000115 /* AccountBalancesView.swift */,
+				D00100000000000000000117 /* CashFlowView.swift */,
+				D00100000000000000000119 /* SettingsView.swift */,
+				D00100000000000000000131 /* Assets.xcassets */,
 			);
 			path = Logbook;
 			sourceTree = "<group>";
 		};
 		D00100000000000000000011 /* Products */ = {
 			isa = PBXGroup;
-			children = (D00100000000000000000007 /* Logbook.app */,);
+			children = (
+				D00100000000000000000007 /* Logbook.app */,
+			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D0010000000000000000012F /* LogbookCore */ = {
+			isa = PBXGroup;
+			children = (
+				D0010000000000000000011B /* CalendarKeys.swift */,
+				D0010000000000000000011E /* Records.swift */,
+				D00100000000000000000121 /* Storage.swift */,
+				D00100000000000000000123 /* Heatmap.swift */,
+				D00100000000000000000126 /* LogbookLinks.swift */,
+				D00100000000000000000129 /* FinanceReports.swift */,
+				D0010000000000000000012B /* CSV.swift */,
+				D0010000000000000000012D /* ImportPreview.swift */,
+				D00100000000000000000132 /* WelcomeGreeting.swift */,
+			);
+			path = LogbookCore;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -63,8 +123,10 @@
 				D00100000000000000000008 /* Frameworks */,
 				D00100000000000000000015 /* Resources */,
 			);
-			buildRules = ();
-			dependencies = ();
+			buildRules = (
+			);
+			dependencies = (
+			);
 			name = Logbook;
 			productName = Logbook;
 			productReference = D00100000000000000000007 /* Logbook.app */;
@@ -84,12 +146,17 @@
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base,);
+			knownRegions = (
+				en,
+				Base,
+			);
 			mainGroup = D00100000000000000000009;
 			productRefGroup = D00100000000000000000011 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (D00100000000000000000012 /* Logbook */,);
+			targets = (
+				D00100000000000000000012 /* Logbook */,
+			);
 		};
 /* End PBXProject section */
 
@@ -97,7 +164,9 @@
 		D00100000000000000000015 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+				D00100000000000000000130 /* Assets.xcassets in Resources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -110,6 +179,21 @@
 				D00100000000000000000001 /* LogbookApp.swift in Sources */,
 				D00100000000000000000002 /* RootView.swift in Sources */,
 				D00100000000000000000003 /* DestinationView.swift in Sources */,
+				D0010000000000000000011C /* CalendarKeys.swift in Sources */,
+				D0010000000000000000011F /* Records.swift in Sources */,
+				D00100000000000000000122 /* Storage.swift in Sources */,
+				D00100000000000000000124 /* Heatmap.swift in Sources */,
+				D00100000000000000000127 /* LogbookLinks.swift in Sources */,
+				D0010000000000000000012A /* FinanceReports.swift in Sources */,
+				D0010000000000000000012C /* CSV.swift in Sources */,
+				D0010000000000000000012E /* ImportPreview.swift in Sources */,
+				D00100000000000000000133 /* WelcomeGreeting.swift in Sources */,
+				D0010000000000000000010E /* Editor.swift in Sources */,
+				D00100000000000000000110 /* CheckInsView.swift in Sources */,
+				D00100000000000000000114 /* FinanceChart.swift in Sources */,
+				D00100000000000000000116 /* AccountBalancesView.swift in Sources */,
+				D00100000000000000000118 /* CashFlowView.swift in Sources */,
+				D0010000000000000000011A /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -120,12 +204,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CONFIGURATION_BUILD_DIR = "$(PROJECT_DIR)/DerivedData/macOS/Build/Products/$(CONFIGURATION)";
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOGBOOK_BUNDLE_ID = com.example.logbook;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -136,10 +221,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
+				CONFIGURATION_BUILD_DIR = "$(PROJECT_DIR)/DerivedData/macOS/Build/Products/$(CONFIGURATION)";
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOGBOOK_BUNDLE_ID = com.example.logbook;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SDKROOT = auto;
+				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -149,38 +235,34 @@
 		D00100000000000000000018 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Logbook;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphone*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphone*]" = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.logbook;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOGBOOK_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				"TARGETED_DEVICE_FAMILY[sdk=iphone*]" = "1,2";
 			};
 			name = Debug;
 		};
 		D00100000000000000000019 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/App-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Logbook;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphone*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphone*]" = YES;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.logbook;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LOGBOOK_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
-				SUPPORTS_MACCATALYST = NO;
+				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				"TARGETED_DEVICE_FAMILY[sdk=iphone*]" = "1,2";
 			};
 			name = Release;
 		};
