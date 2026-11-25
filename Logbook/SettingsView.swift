@@ -49,6 +49,22 @@ struct SettingsView: View {
                     .toggleStyle(.switch)
             }
 
+            Section("Fitness") {
+                let scenes = store.library.visibleScenes(showArchived: false)
+                Picker("Default Check-in Scene", selection: preference(\.strengthCheckInSceneID)) {
+                    Text("None").tag(nil as String?)
+                    if let id = store.preferences.strengthCheckInSceneID, store.defaultStrengthCheckInScene == nil {
+                        Text("Unavailable Scene").tag(Optional(id))
+                    }
+                    ForEach(scenes) { scene in
+                        Text(scene.name).tag(Optional(scene.id))
+                    }
+                }
+                Text("Fitness shows this scene in History and suggests it after training.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Bookkeeping") {
                 CurrencySelection("Default currency", currency: preference(\.defaultCurrency))
             }
@@ -118,7 +134,7 @@ struct SettingsView: View {
         }
         .buttonStyle(.bordered)
 
-        Text("A backup includes all records and preferences. Review the backup before restoring and choose whether to restore preferences.")
+        Text("A backup includes check-ins, bookkeeping, training plans, preferences, and any training history saved by earlier versions. Review the backup before restoring and choose whether to restore preferences.")
             .font(.footnote)
             .foregroundStyle(.secondary)
 

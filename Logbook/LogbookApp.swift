@@ -1,4 +1,6 @@
+import AVFoundation
 import SwiftUI
+import UserNotifications
 
 @main
 struct LogbookApp: App {
@@ -8,7 +10,20 @@ struct LogbookApp: App {
                                                     appropriateFor: nil, create: true)
             .appending(path: bundleID, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return try LogbookStore(url: directory.appending(path: "Logbook.store"))
+        // Clear reminders scheduled by the previous notification-based rest timer.
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["strength-rest-complete"])
+        let alarm = Bundle.main.url(forResource: "RestAlarm", withExtension: "wav").flatMap {
+            try? AVAudioPlayer(contentsOf: $0)
+        }
+        alarm?.numberOfLoops = -1
+        return try LogbookStore(url: directory.appending(path: "Logbook.store")) { ringing in
+            if ringing {
+                alarm?.play()
+            } else {
+                alarm?.stop()
+                alarm?.currentTime = 0
+            }
+        }
     }
 
     var body: some Scene {
@@ -16,7 +31,7 @@ struct LogbookApp: App {
             Group {
                 switch startup {
                 case .success(let store):
-                    RootView()
+                    RootView(resumeStrengthRest: store.library.activeStrengthSession?.restDeadline != nil)
                         .environment(store)
                 case .failure(let error):
                     ContentUnavailableView(

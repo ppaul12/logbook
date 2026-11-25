@@ -24,8 +24,10 @@ final class LogbookStore {
     private(set) var library: Library
     private(set) var preferences: Preferences
     private(set) var generation = 0
+    let strengthRestTimer: StrengthRestTimer
 
-    init(url: URL? = nil, inMemory: Bool = false, defaults: UserDefaults = .standard) throws {
+    init(url: URL? = nil, inMemory: Bool = false, defaults: UserDefaults = .standard,
+         onStrengthRestAlarmChange: @escaping @MainActor (Bool) -> Void = { _ in }) throws {
         let schema = Schema([StoredRecord.self])
         let configuration: ModelConfiguration
         if let url {
@@ -54,6 +56,7 @@ final class LogbookStore {
         }
         self.container = container
         self.context = context
+        strengthRestTimer = StrengthRestTimer(onAlarmChange: onStrengthRestAlarmChange)
         self.rows = Dictionary(uniqueKeysWithValues: rows.map { ($0.key, $0) })
         self.versions = Dictionary(uniqueKeysWithValues: versions.map { ($0.key, $0) })
         library = loadedLibrary
@@ -68,6 +71,7 @@ final class LogbookStore {
             try context.save()
             self.rows[Self.preferencesKey] = row
         }
+        strengthRestTimer.replaceDeadline(with: library.activeStrengthSession?.restDeadline)
     }
 
     func save(_ records: [Record] = [], removing keys: [String] = [], preferences: Preferences? = nil,
@@ -84,7 +88,185 @@ final class LogbookStore {
         }
         try validateCheckInChanges(changes)
         try validateBalanceChanges(changes)
+        try validateStrengthChanges(changes, restoringBackup: restoringBackup)
         try commit(Array(changes.values), preferences: preferences)
+    }
+
+    var strengthPlans: [StrengthPlan] {
+        let plans = library.strengthPlans
+        guard !preferences.strengthPlanOrder.isEmpty else { return plans }
+        var remaining = Dictionary(uniqueKeysWithValues: plans.map { ($0.id, $0) })
+        let ordered = preferences.strengthPlanOrder.compactMap { remaining.removeValue(forKey: $0) }
+        return ordered + plans.filter { remaining[$0.id] != nil }
+    }
+
+    var defaultStrengthCheckInScene: CheckInScene? {
+        guard let id = preferences.strengthCheckInSceneID, let scene = library.scene(id: id),
+              !scene.archived else { return nil }
+        return scene
+    }
+
+    func moveStrengthPlan(_ id: UUID, to targetID: UUID?) throws {
+        var order = strengthPlans.map(\.id)
+        guard let source = order.firstIndex(of: id) else { return }
+        let destination: Int
+        if let targetID {
+            guard let targetIndex = order.firstIndex(of: targetID) else { return }
+            destination = targetIndex
+        } else {
+            destination = order.count - 1
+        }
+        guard source != destination else { return }
+        order.remove(at: source)
+        order.insert(id, at: destination)
+        var updated = preferences
+        updated.strengthPlanOrder = order
+        try save(preferences: updated)
+    }
+
+    func saveStrengthPlan(_ draft: StrengthPlan) throws {
+        var plan = draft
+        plan.name = plan.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        for index in plan.exercises.indices {
+            plan.exercises[index].name = plan.exercises[index].name.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var updated = preferences
+        if !updated.strengthPlanOrder.isEmpty, library.strengthPlan(id: plan.id) == nil {
+            updated.strengthPlanOrder = strengthPlans.map(\.id) + [plan.id]
+        }
+        try save([.strengthPlan(plan)], preferences: updated)
+    }
+
+    func deleteStrengthPlan(_ plan: StrengthPlan) throws {
+        guard let saved = library.strengthPlan(id: plan.id) else { return }
+        guard saved == plan else {
+            throw LogbookError.message("This plan has changed. Review it again before deleting.")
+        }
+        var updated = preferences
+        updated.strengthPlanOrder.removeAll { $0 == saved.id }
+        try save(removing: [Record.strengthPlan(saved).key], preferences: updated)
+    }
+
+    @discardableResult
+    func startStrengthSession(planID: UUID) throws -> StrengthSession {
+        guard library.activeStrengthSession == nil else {
+            throw LogbookError.message("Resume or end the current training session first.")
+        }
+        guard let plan = library.strengthPlan(id: planID) else {
+            throw LogbookError.message("This training plan is no longer available.")
+        }
+        let startedAt = Date.now
+        let timeZone = preferences.timeZone
+        let session = StrengthSession(plan: plan, startedAt: startedAt, day: DayKey(startedAt, in: timeZone),
+                                      timeZoneID: timeZone.identifier)
+        try save([.strengthSession(session)])
+        return session
+    }
+
+    func completeStrengthSet(sessionID: UUID, index: Int, result: StrengthSet, restSeconds: Int? = nil) throws {
+        var session = try currentStrengthSession(id: sessionID, completedCount: index)
+        guard let next = session.nextSet else {
+            throw LogbookError.message("All sets in this training session are complete.")
+        }
+        guard session.restDeadline == nil else {
+            throw LogbookError.message("End the rest timer or stop its alarm before recording the next set.")
+        }
+        session.completedSets.append(result)
+        let seconds = restSeconds ?? next.exercise.restSeconds
+        let deadline = try strengthRestDeadline(seconds: seconds)
+        session.restDeadline = session.nextSet != nil && seconds > 0 ? deadline : nil
+        try save([.strengthSession(session)])
+    }
+
+    func changeStrengthRest(sessionID: UUID, completedCount: Int, seconds: Int) throws {
+        var session = try currentStrengthSession(id: sessionID, completedCount: completedCount)
+        guard session.restDeadline != nil, !strengthRestTimer.isRinging else {
+            throw LogbookError.message("The rest countdown is no longer running.")
+        }
+        session.restDeadline = try strengthRestDeadline(seconds: seconds)
+        try save([.strengthSession(session)])
+    }
+
+    private func strengthRestDeadline(seconds: Int) throws -> Date {
+        guard StrengthExercise.restRange.contains(seconds) else {
+            throw LogbookError.message("Choose a rest time between 0 and 3600 seconds.")
+        }
+        return Date.now.addingTimeInterval(Double(seconds))
+    }
+
+    func endStrengthRest(sessionID: UUID, completedCount: Int) throws {
+        var session = try currentStrengthSession(id: sessionID, completedCount: completedCount)
+        session.restDeadline = nil
+        try save([.strengthSession(session)])
+    }
+
+    @discardableResult
+    func finishStrengthSession(sessionID: UUID, completedCount: Int) throws -> StrengthSession {
+        var session = try currentStrengthSession(id: sessionID, completedCount: completedCount)
+        session.finishedAt = max(.now, session.startedAt)
+        session.restDeadline = nil
+        try session.validate()
+        try save(removing: [Record.strengthSession(session).key])
+        return session
+    }
+
+    @discardableResult
+    func addStrengthCheckIn(to scene: CheckInScene, on day: DayKey, quantity: String = "", note: String,
+                           entryID: UUID = UUID()) throws -> Bool {
+        guard let current = library.scene(id: scene.id), !current.archived else {
+            throw LogbookError.message("This scene is no longer available. Choose another scene.")
+        }
+        guard current.kind == scene.kind, current.unit == scene.unit else {
+            throw LogbookError.message("The scene changed. Review its current check-in fields and try again.")
+        }
+        guard day <= preferences.today else {
+            throw LogbookError.message("Choose a date that has already started in Heatmaps.")
+        }
+
+        if scene.kind == .completion {
+            guard library.checkIn(for: scene.id, on: day) == nil else { return false }
+            try save([.checkIn(CheckIn(sceneID: scene.id, day: day, value: 1, note: note))])
+        } else {
+            guard let value = CheckIn.parseQuantity(quantity) else {
+                throw LogbookError.message("Enter a nonnegative quantity.")
+            }
+            try save([.checkIn(CheckIn(sceneID: scene.id, day: day, value: value, note: note, entryID: entryID))])
+        }
+        return true
+    }
+
+    func discardStrengthSession(sessionID: UUID, completedCount: Int) throws {
+        let session = try currentStrengthSession(id: sessionID, completedCount: completedCount)
+        try save(removing: [Record.strengthSession(session).key])
+    }
+
+    private func currentStrengthSession(id: UUID, completedCount: Int) throws -> StrengthSession {
+        guard let session = library.activeStrengthSession, session.id == id,
+              session.completedSets.count == completedCount else {
+            throw LogbookError.message("The training session has changed. Review its current progress and try again.")
+        }
+        return session
+    }
+
+    private func validateStrengthChanges(_ changes: [String: VersionedRecord], restoringBackup: Bool) throws {
+        var activeID: UUID?
+        for change in changes.values {
+            switch change.value {
+            case .strengthPlan(let plan): try plan.validate()
+            case .strengthSession(let session):
+                try session.validate()
+                if restoringBackup, session.finishedAt == nil || session.id == library.activeStrengthSession?.id {
+                    throw LogbookError.message("Finish the current training session before restoring that record.")
+                }
+                if session.finishedAt == nil {
+                    guard activeID == nil, library.activeStrengthSession.map({ $0.id == session.id }) ?? true else {
+                        throw LogbookError.message("Only one training session can be in progress.")
+                    }
+                    activeID = session.id
+                }
+            default: break
+            }
+        }
     }
 
     func resetScene(_ sceneID: String) throws {
@@ -92,7 +274,9 @@ final class LogbookStore {
     }
 
     func deleteScene(_ sceneID: String) throws {
-        try save(removing: library.checkInKeys(for: sceneID) + ["scene/\(sceneID)"])
+        var updated = preferences
+        if updated.strengthCheckInSceneID == sceneID { updated.strengthCheckInSceneID = nil }
+        try save(removing: library.checkInKeys(for: sceneID) + ["scene/\(sceneID)"], preferences: updated)
     }
 
     func resetAccount(_ accountID: String) throws {
@@ -171,7 +355,12 @@ final class LogbookStore {
         }
         rows.merge(inserted) { existing, _ in existing }
         for change in changes { versions[change.key] = change }
-        if !changes.isEmpty { library = Library(versions.values.compactMap(\.value)) }
+        if !changes.isEmpty {
+            let previousRest = library.activeStrengthSession?.restDeadline
+            library = Library(versions.values.compactMap(\.value))
+            let currentRest = library.activeStrengthSession?.restDeadline
+            if previousRest != currentRest { strengthRestTimer.replaceDeadline(with: currentRest) }
+        }
         if let newPreferences { self.preferences = newPreferences }
         generation += 1
     }

@@ -85,6 +85,8 @@ extension Record {
              item.currency.rawValue, item.kind == .expense ? item.paymentMethod : "", item.note,
              item.kind == .expense ? String(item.settlesNextMonth) : "",
              item.kind == .expense ? item.category : ""]
+        case .strengthPlan, .strengthSession:
+            []
         }
     }
 }

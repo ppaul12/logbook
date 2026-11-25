@@ -71,6 +71,8 @@ struct Preferences: Codable, Equatable, Sendable {
     var showArchivedScenes = false
     var cashFlowAveragePeriod = CashFlowAveragePeriod.twelveMonths
     var greetingName = ""
+    var strengthPlanOrder: [UUID] = []
+    var strengthCheckInSceneID: String?
 
     var timeZone: TimeZone { TimeZone(identifier: timeZoneID) ?? LogCalendar.utc }
     var today: DayKey { DayKey(.now, in: timeZone) }
@@ -86,6 +88,8 @@ extension Preferences {
         cashFlowAveragePeriod = try values.decodeIfPresent(CashFlowAveragePeriod.self, forKey: .cashFlowAveragePeriod)
             ?? .twelveMonths
         greetingName = try values.decodeIfPresent(String.self, forKey: .greetingName) ?? ""
+        strengthPlanOrder = try values.decodeIfPresent([UUID].self, forKey: .strengthPlanOrder) ?? []
+        strengthCheckInSceneID = try values.decodeIfPresent(String.self, forKey: .strengthCheckInSceneID)
     }
 }
 
@@ -168,6 +172,12 @@ struct CheckIn: Codable, Equatable, Identifiable, Sendable {
     var id: String {
         let dayID = "\(sceneID)/\(day.rawValue)"
         return entryID.map { "\(dayID)/\($0.uuidString)" } ?? dayID
+    }
+
+    static func parseQuantity(_ text: String) -> Double? {
+        guard let value = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              value.isFinite, value >= 0 else { return nil }
+        return value
     }
 }
 
@@ -294,6 +304,7 @@ extension Transaction {
 enum Record: Codable, Equatable, Sendable {
     case scene(CheckInScene), checkIn(CheckIn), account(Account), balance(Balance)
     case expenseCategory(ExpenseCategory), transaction(Transaction)
+    case strengthPlan(StrengthPlan), strengthSession(StrengthSession)
 
     var key: String {
         switch self {
@@ -303,6 +314,8 @@ enum Record: Codable, Equatable, Sendable {
         case .balance(let row): "balance/\(row.id)"
         case .expenseCategory(let row): "expenseCategory/\(row.id)"
         case .transaction(let row): "transaction/\(row.id)"
+        case .strengthPlan(let row): "strengthPlan/\(row.id)"
+        case .strengthSession(let row): "strengthSession/\(row.id)"
         }
     }
 }
@@ -332,6 +345,8 @@ struct Library: Sendable {
         scenesByID.values.sorted { ($0.position, $0.id) < ($1.position, $1.id) }
     }
 
+    func scene(id: String) -> CheckInScene? { scenesByID[id] }
+
     func visibleScenes(showArchived: Bool) -> [CheckInScene] {
         scenes.filter { showArchived || !$0.archived }
     }
@@ -360,6 +375,31 @@ struct Library: Sendable {
     var transactions: [Transaction] {
         records.values.compactMap { if case .transaction(let row) = $0 { row } else { nil } }
             .sorted { ($0.day, $0.id) > ($1.day, $1.id) }
+    }
+
+    var strengthPlans: [StrengthPlan] {
+        records.values.compactMap { if case .strengthPlan(let plan) = $0 { plan } else { nil } }
+            .sorted { ($0.name, $0.id.uuidString) < ($1.name, $1.id.uuidString) }
+    }
+
+    func strengthPlan(id: UUID) -> StrengthPlan? {
+        guard case .strengthPlan(let plan) = records["strengthPlan/\(id)"] else { return nil }
+        return plan
+    }
+
+    var activeStrengthSession: StrengthSession? {
+        for case .strengthSession(let session) in records.values where session.finishedAt == nil {
+            return session
+        }
+        return nil
+    }
+
+    var strengthHistory: [StrengthSession] {
+        records.values.compactMap { record -> StrengthSession? in
+            guard case .strengthSession(let session) = record, session.finishedAt != nil else { return nil }
+            return session
+        }
+        .sorted { ($0.startedAt, $0.id.uuidString) > ($1.startedAt, $1.id.uuidString) }
     }
 
     func checkIn(for sceneID: String, on day: DayKey) -> CheckIn? {

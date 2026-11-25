@@ -30,7 +30,7 @@ enum LogCalendar {
         return formatter.string(from: date)
     }
 
-    private static func dayFormatter() -> DateFormatter {
+    static func dayFormatter() -> DateFormatter {
         let formatter = displayFormatter()
         formatter.dateStyle = .short
         formatter.isLenient = false

@@ -148,11 +148,7 @@ struct CheckInsView: View {
                     selection = updated.archived && !store.preferences.showArchivedScenes ? .allScenes : .scene(updated.id)
                 }
             case .day(let scene, let day):
-                if scene.kind == .quantity {
-                    QuantityDayEditor(scene: scene, day: day)
-                } else {
-                    CheckInEditor(scene: scene, day: day, existing: store.library.checkIn(for: scene.id, on: day))
-                }
+                SceneDayEditor(scene: scene, day: day)
             case .removal(let action):
                 removalConfirmation(action)
             }
@@ -262,19 +258,16 @@ struct CheckInsView: View {
     }
 }
 
-private struct SceneHeatmap: View {
+struct SceneHeatmap: View {
     @Environment(LogbookStore.self) private var store
     @State private var pickedDay: DayKey?
     @State private var reviewDay: DayKey?
     @State private var earliestRequestedDay: DayKey?
-    @State private var pendingHistoryJump: DayKey?
+    @State private var scrollRequest: HeatmapGrid.ScrollRequest?
     let scene: CheckInScene
     let today: DayKey
+    var title = Text("Daily History")
     let editDay: (DayKey) -> Void
-
-    private let cellSize: CGFloat = 14
-    private let cellSpacing: CGFloat = 3
-    private let monthRowHeight: CGFloat = 20
 
     var body: some View {
         let earliestEntry = store.library.firstCheckInDay(for: scene.id) ?? today
@@ -282,119 +275,60 @@ private struct SceneHeatmap: View {
             through: today, earliest: min(earliestEntry, earliestRequestedDay ?? today),
             weekStart: store.preferences.weekStart
         )
+        let layout = HeatmapGridLayout.history(history)
         let selectedDay = min(pickedDay ?? today, today)
         let highlightedDay = min(reviewDay ?? today, today)
-        ScrollViewReader { proxy in
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Daily History").font(.title2.weight(.semibold))
-                HStack {
-                    LogbookDatePicker(title: "Date", day: Binding(
-                        get: { selectedDay },
-                        set: { pickedDay = $0 == today ? nil : $0 }
-                    ), latest: today, showsLabel: false, todayShortcut: today)
-                    .fixedSize()
 
-                    Button("Go") {
-                        reviewDay = selectedDay == today ? nil : selectedDay
-                        let week = history.week(containing: selectedDay)
-                        if history.weeks.contains(week) {
-                            pendingHistoryJump = nil
-                            proxy.scrollTo(week, anchor: .trailing)
-                        } else {
-                            pendingHistoryJump = selectedDay
-                            earliestRequestedDay = selectedDay
-                        }
-                    }
-                }
-                HStack(alignment: .top, spacing: 7) {
-                    weekdayLabels
-                    ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: cellSpacing) {
-                            ForEach(history.weeks, id: \.self) { week in
-                                weekColumn(history.days(in: week), selectedDay: highlightedDay)
-                            }
-                        }
-                        .padding(.leading, 1)
-                        .padding(.trailing, cellSize)
-                        .padding(.bottom, 12)
-                        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { _ in
-                            guard let day = pendingHistoryJump else { return }
-                            let week = history.week(containing: day)
-                            guard history.weeks.contains(week) else { return }
-                            // Scroll after the expanded content has finished laying out.
-                            Task { @MainActor in
-                                guard pendingHistoryJump == day else { return }
-                                pendingHistoryJump = nil
-                                proxy.scrollTo(week, anchor: .trailing)
-                            }
-                        }
-                    }
-                    .defaultScrollAnchor(.trailing)
-                }
-                .environment(\.layoutDirection, .leftToRight)
+        VStack(alignment: .leading, spacing: 12) {
+            title.font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            HStack {
+                LogbookDatePicker(title: "Date", day: Binding(
+                    get: { selectedDay },
+                    set: { pickedDay = $0 == today ? nil : $0 }
+                ), latest: today, showsLabel: false, todayShortcut: today)
+                .fixedSize()
 
-                if scene.kind == .quantity, let maximum = scene.maximum {
-                    intensityLegend(maximum: maximum)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Button("Go") {
+                    reviewDay = selectedDay == today ? nil : selectedDay
+                    if !history.weeks.contains(history.week(containing: selectedDay)) {
+                        earliestRequestedDay = selectedDay
+                    }
+                    scrollRequest = HeatmapGrid.ScrollRequest(day: selectedDay)
                 }
+            }
+            HStack(alignment: .top, spacing: 7) {
+                weekdayLabels(layout)
+                HeatmapGrid(layout: layout, scene: scene, today: today, highlighted: highlightedDay,
+                            library: store.library, generation: store.generation, scrollRequest: scrollRequest,
+                            editDay: editDay)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: layout.height)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            if scene.kind == .quantity, let maximum = scene.maximum {
+                intensityLegend(maximum: maximum)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var weekdayLabels: some View {
+    private func weekdayLabels(_ layout: HeatmapGridLayout) -> some View {
         let symbols = LogCalendar.displayCalendar.shortStandaloneWeekdaySymbols
         let first = store.preferences.weekStart.rawValue - 1
-        return VStack(alignment: .leading, spacing: cellSpacing) {
+        return VStack(alignment: .leading, spacing: layout.cellGap) {
             ForEach(0..<7) { offset in
                 Text(symbols[(first + offset) % 7])
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .frame(height: cellSize)
+                    .frame(height: layout.cellSize)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
-        .padding(.top, monthRowHeight + cellSpacing)
+        .padding(.top, layout.firstCellY)
         .accessibilityHidden(true)
-    }
-
-    private func weekColumn(_ days: [DayKey?], selectedDay: DayKey) -> some View {
-        VStack(spacing: cellSpacing) {
-            Color.clear
-                .frame(width: cellSize, height: monthRowHeight)
-                .overlay(alignment: .leading) {
-                    if let month = monthLabel(in: days) {
-                        Text(month)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize()
-                            .accessibilityHidden(true)
-                    }
-                }
-                .allowsHitTesting(false)
-
-            ForEach(days.indices, id: \.self) { index in
-                if let day = days[index] {
-                    HeatmapCell(scene: scene, day: day, today: today, size: cellSize,
-                                highlighted: day == selectedDay) { editDay(day) }
-                } else {
-                    Color.clear.frame(width: cellSize, height: cellSize)
-                }
-            }
-        }
-    }
-
-    private func monthLabel(in days: [DayKey?]) -> String? {
-        let calendar = LogCalendar.displayCalendar
-        for case let day? in days where day <= today {
-            let date = day.date
-            let components = calendar.dateComponents([.month, .day], from: date)
-            if components.day == 1 {
-                return LogCalendar.label(date, template: components.month == 1 ? "yMMM" : "MMM")
-            }
-        }
-        return nil
     }
 
     private func intensityLegend(maximum: Double) -> some View {
@@ -437,60 +371,6 @@ private struct SceneCheckInStatistics: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct HeatmapCell: View {
-    @Environment(LogbookStore.self) private var store
-    @State private var hovered = false
-    let scene: CheckInScene
-    let day: DayKey
-    let today: DayKey
-    let size: CGFloat
-    let highlighted: Bool
-    let edit: () -> Void
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 3)
-        if day > today {
-            shape.fill(.secondary.opacity(0.06)).frame(width: size, height: size)
-                .accessibilityHidden(true)
-        } else {
-            let entry = store.library.checkInDay(for: scene.id, on: day)
-            let date = day.label
-            let details = details(for: entry)
-            Button(action: edit) {
-                shape
-                    .fill(entry.map { Color(logbookHex: scene.color).opacity(scene.intensity($0.total)) }
-                          ?? Color.secondary.opacity(0.17))
-                    .overlay {
-                        if hovered || highlighted {
-                            shape.strokeBorder(.primary.opacity(hovered ? 0.9 : 0.55), lineWidth: 1)
-                        }
-                    }
-                    .frame(width: size, height: size)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .onHover { hovered = $0 }
-            .help(([date] + details).joined(separator: "\n"))
-            .accessibilityLabel(date)
-            .accessibilityValue(details.joined(separator: ", "))
-        }
-    }
-
-    private func details(for entry: CheckInDay?) -> [String] {
-        guard let entry else { return [String(localized: "No entry")] }
-        let headline = scene.kind == .quantity
-            ? String(localized: "Total \(entry.total.formatted()) \(scene.unit)") : String(localized: "Completed")
-        let notes = entry.entries.compactMap { record -> String? in
-            guard !record.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            if entry.entries.count > 1 {
-                return "\(record.value.formatted()) \(scene.unit) · \(record.note)"
-            }
-            return record.note
-        }
-        return [headline] + notes
     }
 }
 
@@ -547,18 +427,32 @@ private struct SceneEditor: View {
     }
 }
 
+struct SceneDayEditor: View {
+    @Environment(LogbookStore.self) private var store
+    let scene: CheckInScene
+    let day: DayKey
+
+    var body: some View {
+        if scene.kind == .quantity {
+            QuantityDayEditor(scene: scene, day: day)
+        } else {
+            CheckInEditor(scene: scene, day: day, existing: store.library.checkIn(for: scene.id, on: day))
+        }
+    }
+}
+
 private struct CheckInEditor: View {
     let scene: CheckInScene
     let day: DayKey
-    let existing: CheckIn?
     @Environment(LogbookStore.self) private var store
+    @State private var original: CheckIn?
     @State private var completed = true
     @State private var note: String
 
     init(scene: CheckInScene, day: DayKey, existing: CheckIn?) {
         self.scene = scene
         self.day = day
-        self.existing = existing
+        _original = State(initialValue: existing)
         _note = State(initialValue: existing?.note ?? "")
     }
 
@@ -573,7 +467,7 @@ private struct CheckInEditor: View {
     }
 
     private func save() throws {
-        guard store.library.checkIn(for: scene.id, on: day) == existing else {
+        guard store.library.checkIn(for: scene.id, on: day) == original else {
             throw LogbookError.message("This check-in changed while the editor was open. Reopen it to edit the current record.")
         }
         let record = Record.checkIn(CheckIn(sceneID: scene.id, day: day, value: 1, note: note))
@@ -670,8 +564,7 @@ private struct QuantityDayEditor: View {
     }
 
     private func save() {
-        guard let value = Double(quantity.trimmingCharacters(in: .whitespacesAndNewlines)),
-              value.isFinite, value >= 0 else {
+        guard let value = CheckIn.parseQuantity(quantity) else {
             error = "Enter a nonnegative quantity."
             return
         }
@@ -725,7 +618,7 @@ private struct AllScenesOverview: View {
     var body: some View {
         let showArchived = store.preferences.showArchivedScenes
         let canReorder = isEditing && scenes.count > 1
-        let weeks = isEditing ? [] : HeatmapWindow(endingOn: today, count: 4).weeks
+        let layout = isEditing ? nil : HeatmapGridLayout.recent(HeatmapWindow(endingOn: today, count: 4))
         return LazyVStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(today.label)
@@ -740,9 +633,11 @@ private struct AllScenesOverview: View {
             ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
                 VStack(spacing: 0) {
                     Divider()
-                    sceneRow(scene, weeks: weeks, index: index, showArchived: showArchived, canReorder: canReorder)
+                    sceneRow(scene, layout: layout, index: index, showArchived: showArchived, canReorder: canReorder)
                 }
-                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { frame in
+                .onGeometryChange(for: CGRect?.self, of: { proxy in
+                    canReorder ? proxy.frame(in: .global) : nil
+                }) { frame in
                     rowFrames[scene.id] = frame
                 }
                 .onDisappear { rowFrames.removeValue(forKey: scene.id) }
@@ -754,17 +649,19 @@ private struct AllScenesOverview: View {
                 }
             }
         }
-        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { listFrame = $0 }
+        .onGeometryChange(for: CGRect.self, of: { proxy in
+            canReorder ? proxy.frame(in: .global) : .zero
+        }) { listFrame = $0 }
         .onChange(of: isEditing) { insertion = nil }
         .logbookError($error)
     }
 
     private func sceneRow(
-        _ scene: CheckInScene, weeks: [[DayKey]], index: Int, showArchived: Bool, canReorder: Bool
+        _ scene: CheckInScene, layout: HeatmapGridLayout?, index: Int, showArchived: Bool, canReorder: Bool
     ) -> some View {
         HStack(spacing: 12) {
             if canReorder {
-                SceneDragHandle { location in
+                ListDragHandle { location in
                     let target = destination(at: location, in: scenes)
                     insertion = target == index || target == index + 1 ? nil : target
                 } onDrop: { location in
@@ -806,8 +703,12 @@ private struct AllScenesOverview: View {
                     .help("Reset check-ins")
                 Button("Delete", systemImage: "trash", role: .destructive) { delete(scene) }
                     .help("Delete scene")
-            } else {
-                recentHistory(for: scene, weeks: weeks)
+            } else if let layout {
+                HeatmapGrid(layout: layout, scene: scene, today: today, highlighted: today,
+                            library: store.library, generation: store.generation) {
+                    editDay(scene, $0)
+                }
+                .frame(width: layout.width, height: layout.height)
             }
         }
         .padding(.vertical, 10)
@@ -825,23 +726,6 @@ private struct AllScenesOverview: View {
                     .lineLimit(1)
             }
         }
-    }
-
-    private func recentHistory(for scene: CheckInScene, weeks: [[DayKey]]) -> some View {
-        HStack(spacing: 5) {
-            ForEach(weeks, id: \.self) { week in
-                HStack(spacing: 2) {
-                    ForEach(week, id: \.self) { day in
-                        HeatmapCell(scene: scene, day: day, today: today, size: 9,
-                                    highlighted: day == today) {
-                            editDay(scene, day)
-                        }
-                    }
-                }
-            }
-        }
-        .fixedSize()
-        .environment(\.layoutDirection, .leftToRight)
     }
 
     private func todayStatus(for scene: CheckInScene, on today: DayKey) -> Text {
@@ -882,7 +766,7 @@ private struct AllScenesOverview: View {
     }
 }
 
-private struct SceneDragHandle: NSViewRepresentable {
+struct ListDragHandle: NSViewRepresentable {
     let onDrag: (CGPoint) -> Void
     let onDrop: (CGPoint) -> Void
 

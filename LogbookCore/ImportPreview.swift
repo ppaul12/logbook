@@ -5,11 +5,17 @@ struct LogbookBackup: Codable {
     var files: [String: String]
     var preferences: Preferences
     var scenes: [String: SceneState]
+    var strength: StrengthData?
     static let legacyCategoriesFile = "expense_categories.csv"
 
     struct SceneState: Codable {
         var position: Int
         var archived: Bool
+    }
+
+    struct StrengthData: Codable {
+        let plans: [StrengthPlan]
+        let sessions: [StrengthSession]
     }
 
     init(library: Library, preferences: Preferences) throws {
@@ -18,12 +24,18 @@ struct LogbookBackup: Codable {
             ($0.id, SceneState(position: $0.position, archived: $0.archived))
         })
         self.preferences = preferences
+        let plans = library.strengthPlans
+        let sessions = library.strengthHistory
+        if !plans.isEmpty || !sessions.isEmpty {
+            strength = StrengthData(plans: plans, sessions: sessions)
+            version = 7
+        }
     }
 
     static func read(_ data: Data) throws -> Self {
         struct Header: Decodable { let version: Int }
         let decoder = JSONDecoder()
-        guard try (1...6).contains(decoder.decode(Header.self, from: data).version) else {
+        guard try (1...7).contains(decoder.decode(Header.self, from: data).version) else {
             throw LogbookError.message("This backup format version is unsupported.")
         }
         let backup = try decoder.decode(Self.self, from: data)
@@ -44,13 +56,13 @@ struct ImportPreview {
             case new = "New", duplicate = "Duplicate", conflict = "Conflict", invalid = "Invalid"
         }
 
-        var kind: CSVKind
+        var source: String
         var line: Int
         var status: Status
         var detail: String
         var record: Record?
-        var id: String { "\(kind.filename):\(line)" }
-        var location: String { line == 0 ? kind.filename : "\(kind.filename), line \(line)" }
+        var id: String { "\(source):\(line)" }
+        var location: String { line == 0 ? source : "\(source), line \(line)" }
     }
 
     struct Conflict: Identifiable {
@@ -76,12 +88,14 @@ struct ImportPreview {
     }
 
     init(backup: LogbookBackup, library: Library) {
-        self.init(files: backup.files, library: library, sceneStates: backup.scenes, isBackup: true)
+        self.init(files: backup.files, library: library, sceneStates: backup.scenes,
+                  strength: backup.strength, isBackup: true)
         preferences = backup.preferences
     }
 
     private init(files: [String: String], library: Library,
-                 sceneStates: [String: LogbookBackup.SceneState] = [:], isBackup: Bool = false) {
+                 sceneStates: [String: LogbookBackup.SceneState] = [:],
+                 strength: LogbookBackup.StrengthData? = nil, isBackup: Bool = false) {
         original = library
         self.isBackup = isBackup
         let existingAccounts = Dictionary(uniqueKeysWithValues: library.accounts.map { ($0.id, $0) })
@@ -94,17 +108,32 @@ struct ImportPreview {
         var byKey: [String: [Item]] = [:]
         let categoryNames = Self.legacyCategoryNames(in: files, library: library)
 
+        func classify(_ record: Record, source: String, line: Int, detail: String) throws -> Item {
+            let existing = library.records[record.key]
+            let candidates = byKey[record.key] ?? []
+            let status: Item.Status
+            if record == existing || candidates.contains(where: { $0.record == record }) {
+                status = .duplicate
+            } else {
+                if !isBackup, case .transaction(let entry) = record { try entry.validateNote() }
+                status = existing == nil && candidates.isEmpty ? .new : .conflict
+            }
+            let item = Item(source: source, line: line, status: status, detail: detail, record: record)
+            if status != .duplicate { byKey[record.key, default: []].append(item) }
+            return item
+        }
+
         for kind in CSVKind.allCases {
             guard let source = files[kind.filename] else { continue }
             let rows: [CSV.Row]
             do {
                 rows = try CSV.decode(source)
             } catch {
-                items.append(Item(kind: kind, line: 0, status: .invalid, detail: error.localizedDescription))
+                items.append(Item(source: kind.filename, line: 0, status: .invalid, detail: error.localizedDescription))
                 continue
             }
             guard let header = rows.first, header.values == kind.columns || kind.legacyColumns.contains(header.values) else {
-                items.append(Item(kind: kind, line: rows.first?.line ?? 0, status: .invalid,
+                items.append(Item(source: kind.filename, line: rows.first?.line ?? 0, status: .invalid,
                                   detail: "Expected columns: " + kind.columns.joined(separator: ", ")))
                 continue
             }
@@ -161,29 +190,41 @@ struct ImportPreview {
                                                       usesCategoryIDs: header.values.last == "category_id",
                                                       categoryNames: categoryNames)
                     }
-                    let existing = library.records[record.key]
-                    let candidates = byKey[record.key] ?? []
-                    let status: Item.Status
-                    if record == existing || candidates.contains(where: { $0.record == record }) {
-                        status = .duplicate
-                    } else {
-                        if !isBackup, case .transaction(let entry) = record {
-                            try entry.validateNote()
-                        }
-                        status = existing == nil && candidates.isEmpty ? .new : .conflict
-                    }
                     let previewValues = kind == .transactions ? record.csvValues() : values
                     var details = Self.localizedDates(in: previewValues, for: record)
                     if let state = sceneStates[id], kind == .scenes {
                         details.append(state.archived ? "Archived" : "Active")
                         details.append("Position \(state.position + 1)")
                     }
-                    let item = Item(kind: kind, line: row.line, status: status,
-                                    detail: details.joined(separator: " · "), record: record)
-                    items.append(item)
-                    if status != .duplicate { byKey[record.key, default: []].append(item) }
+                    items.append(try classify(record, source: kind.filename, line: row.line,
+                                              detail: details.joined(separator: " · ")))
                 } catch {
-                    items.append(Item(kind: kind, line: row.line, status: .invalid, detail: error.localizedDescription))
+                    items.append(Item(source: kind.filename, line: row.line, status: .invalid, detail: error.localizedDescription))
+                }
+            }
+        }
+        if let strength {
+            let groups = [
+                ("Training Plans", strength.plans.map(Record.strengthPlan)),
+                ("Training History", strength.sessions.map(Record.strengthSession))
+            ]
+            for (source, records) in groups {
+                for (index, record) in records.enumerated() {
+                    do {
+                        switch record {
+                        case .strengthPlan(let plan): try plan.validate()
+                        case .strengthSession(let session):
+                            try session.validate()
+                            guard session.finishedAt != nil, session.id != library.activeStrengthSession?.id else {
+                                throw LogbookError.message("Only finished training can be restored. Finish any active copy first.")
+                            }
+                        default: break
+                        }
+                        items.append(try classify(record, source: source, line: index + 1,
+                                                  detail: Self.strengthDetails(record)))
+                    } catch {
+                        items.append(Item(source: source, line: index + 1, status: .invalid, detail: error.localizedDescription))
+                    }
                 }
             }
         }
@@ -191,8 +232,8 @@ struct ImportPreview {
             guard incoming.contains(where: { $0.status == .conflict }) else { return nil }
             return Conflict(id: key, existing: library.records[key], incoming: incoming)
         }
-        .sorted { ($0.incoming.first?.kind.rawValue ?? "", $0.incoming.first?.line ?? 0) <
-            ($1.incoming.first?.kind.rawValue ?? "", $1.incoming.first?.line ?? 0) }
+        .sorted { ($0.incoming.first?.source ?? "", $0.incoming.first?.line ?? 0) <
+            ($1.incoming.first?.source ?? "", $1.incoming.first?.line ?? 0) }
     }
 
     func count(_ status: Item.Status) -> Int { items.count { $0.status == status } }
@@ -229,6 +270,10 @@ struct ImportPreview {
     }
 
     func existingDetails(_ record: Record) -> String {
+        switch record {
+        case .strengthPlan, .strengthSession: return Self.strengthDetails(record)
+        default: break
+        }
         let currencies = Dictionary(uniqueKeysWithValues: original.accounts.map { ($0.id, $0.currency) })
         var values = Self.localizedDates(in: record.csvValues(balanceCurrency: currencies), for: record)
         if case .scene(let scene) = record {
@@ -238,10 +283,39 @@ struct ImportPreview {
         return values.joined(separator: " · ")
     }
 
+    private static func strengthDetails(_ record: Record) -> String {
+        switch record {
+        case .strengthPlan(let plan):
+            let exercises = plan.exercises.map { exercise in
+                var details = ["\(exercise.targetSets) sets", "\(exercise.restSeconds)s rest"]
+                if let phase = exercise.phase { details.append(phase.title) }
+                if let reps = exercise.targetReps { details.append("\(reps) reps per set") }
+                if let muscleGroup = exercise.muscleGroup { details.append("Area: \(muscleGroup)") }
+                if let notes = exercise.notes { details.append("Notes: \(notes)") }
+                return "\(exercise.name) (\(details.joined(separator: ", ")))"
+            }
+            return "\(plan.name) · \(exercises.joined(separator: ", "))"
+        case .strengthSession(let session):
+            let exercises = session.plan.exercises.compactMap { exercise -> String? in
+                let sets = session.sets(for: exercise.id)
+                guard !sets.isEmpty else { return nil }
+                let results = sets.map { set in
+                    let reps = set.reps.map { "\($0) reps" }
+                    let weight = set.weight.map { "\($0.formatted()) kg" }
+                    let values = [reps, weight].compactMap { $0 }
+                    return values.isEmpty ? "Completed" : values.joined(separator: " / ")
+                }
+                return "\(exercise.name) (\(results.joined(separator: ", ")))"
+            }
+            return "\(session.plan.name) · \(session.day.label) · \(exercises.joined(separator: " · "))"
+        default: return ""
+        }
+    }
+
     private static func localizedDates(in values: [String], for record: Record) -> [String] {
         var values = values
         switch record {
-        case .scene, .expenseCategory: break
+        case .scene, .expenseCategory, .strengthPlan, .strengthSession: break
         case .checkIn(let entry): values[1] = entry.day.label
         case .account(let account):
             values[3] = account.opened.label

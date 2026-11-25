@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import LogbookCore
@@ -149,6 +150,50 @@ import Testing
     let firstDay = DayKey(DayKey.dateBounds.lowerBound)
     let earliest = HeatmapHistory(through: today, earliest: firstDay, weekStart: .wednesday)
     #expect(earliest.days(in: earliest.weeks.lowerBound).compactMap { $0 }.first == firstDay)
+}
+
+@Test func reusableHeatmapDateFormatterMatchesTheDatePicker() throws {
+    let today = try #require(DayKey(rawValue: "2026-01-02"))
+    let history = HeatmapHistory(through: today, earliest: nil, weekStart: .monday)
+    let formatter = LogCalendar.dayFormatter()
+    let days = history.days(in: history.weeks.upperBound).compactMap { $0 }
+    #expect(days.map { formatter.string(from: $0.date) } == days.map(\.label))
+}
+
+@Test func heatmapGridCanDrawAndHitTestAWindowOfLongHistory() throws {
+    let today = try #require(DayKey(rawValue: "2026-11-26"))
+    let day = try #require(DayKey(rawValue: "0001-01-01"))
+    let layout = HeatmapGridLayout.history(HeatmapHistory(through: today, earliest: day, weekStart: .monday))
+    #expect(layout.columnCount > 100_000)
+    #expect(layout.height == 151)
+    let first = try #require(layout.position(of: day))
+    #expect(first.column == 0)
+    let rect = layout.rect(for: first)
+    #expect(layout.position(at: CGPoint(x: rect.midX, y: rect.midY)) == first)
+    #expect(layout.position(at: CGPoint(x: rect.maxX + 1, y: rect.midY)) == nil)
+    #expect(layout.position(at: CGPoint(x: rect.midX, y: rect.minY - 1)) == nil)
+    let recent = try #require(layout.position(of: today))
+    let viewport = CGRect(x: layout.width - 780, y: 0, width: 780, height: layout.height)
+    #expect(layout.visibleColumns(in: viewport).count <= 47)
+    #expect(layout.visibleColumns(in: viewport).contains(recent.column))
+    #expect(layout.days(in: recent.column)[recent.row] == today)
+}
+
+@Test func compactHeatmapUsesTheSameDatesAsItsFourWeekWindow() throws {
+    let today = try #require(DayKey(rawValue: "2026-11-26"))
+    let window = HeatmapWindow(endingOn: today, count: 4)
+    let layout = HeatmapGridLayout.recent(window)
+    #expect(layout.width == 315)
+    #expect(layout.height == 9)
+    for (column, week) in window.weeks.enumerated() {
+        for (row, day) in week.enumerated() {
+            let position = HeatmapGridLayout.Position(column: column, row: row)
+            let rect = layout.rect(for: position)
+            #expect(layout.position(at: CGPoint(x: rect.midX, y: rect.midY)) == position)
+            #expect(layout.days(in: column)[row] == day)
+        }
+    }
+    #expect(layout.position(at: CGPoint(x: 77, y: 4)) == nil)
 }
 
 @Test func sceneLinksPreserveSceneIdentifiersAndHeatmapsRespectWeekStart() throws {

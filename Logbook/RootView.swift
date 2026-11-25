@@ -3,6 +3,7 @@ import SwiftUI
 
 enum Destination: String, Identifiable {
     case checkIns
+    case strengthTraining
     case accountBalances
     case monthlyCashFlow
     case settings
@@ -12,6 +13,7 @@ enum Destination: String, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .checkIns: "Check-in Heatmaps"
+        case .strengthTraining: "Strength Training"
         case .accountBalances: "Account Balances"
         case .monthlyCashFlow: "Cash Flow"
         case .settings: "Settings"
@@ -21,6 +23,7 @@ enum Destination: String, Identifiable {
     var icon: String {
         switch self {
         case .checkIns: "calendar"
+        case .strengthTraining: "dumbbell"
         case .accountBalances: "wallet.bifold"
         case .monthlyCashFlow: "chart.line.uptrend.xyaxis"
         case .settings: "gearshape"
@@ -29,13 +32,14 @@ enum Destination: String, Identifiable {
 }
 
 private enum SidebarGroup: String, CaseIterable, Identifiable {
-    case checkIns, bookkeeping
+    case checkIns, fitness, bookkeeping
 
     var id: Self { self }
 
     var title: LocalizedStringKey {
         switch self {
         case .checkIns: "Check-ins"
+        case .fitness: "Fitness"
         case .bookkeeping: "Bookkeeping"
         }
     }
@@ -43,6 +47,7 @@ private enum SidebarGroup: String, CaseIterable, Identifiable {
     var destinations: [Destination] {
         switch self {
         case .checkIns: [.checkIns]
+        case .fitness: [.strengthTraining]
         case .bookkeeping: [.accountBalances, .monthlyCashFlow]
         }
     }
@@ -55,9 +60,17 @@ struct RootView: View {
     @State private var cashFlowMetric = CashFlowMetric.netIncome
     @State private var balanceCurrency: LedgerCurrency?
     @State private var checkInSelection: CheckInSelection = .allScenes
+    @State private var strengthNavigation = StrengthTrainingNavigation()
     @State private var balanceAccountID: String?
     @State private var selection: Destination?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    init(resumeStrengthRest: Bool) {
+        if resumeStrengthRest {
+            _selection = State(initialValue: .strengthTraining)
+            _strengthNavigation = State(initialValue: StrengthTrainingNavigation(page: .workout))
+        }
+    }
 
     private struct Page: Equatable {
         let destination: Destination?
@@ -67,6 +80,7 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(selection: selection, onSelect: select)
+                .disabled(isStrengthNavigationLocked)
                 .navigationTitle("Logbook")
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220)
         } detail: {
@@ -101,7 +115,7 @@ struct RootView: View {
         if let selection {
             DestinationView(destination: selection, cashFlowCurrency: $cashFlowCurrency, cashFlowMetric: $cashFlowMetric,
                             balanceCurrency: $balanceCurrency, checkInSelection: $checkInSelection,
-                            balanceAccountID: $balanceAccountID)
+                            balanceAccountID: $balanceAccountID, strengthNavigation: $strengthNavigation)
         } else {
             let greetingName = store.preferences.greetingName
             TimelineView(.everyMinute) { context in
@@ -128,7 +142,14 @@ struct RootView: View {
         }
     }
 
+    private var isStrengthNavigationLocked: Bool {
+        guard selection == .strengthTraining else { return false }
+        return strengthNavigation.isEditingPlan
+            || (strengthNavigation.page == .workout && store.library.activeStrengthSession != nil)
+    }
+
     private func select(_ destination: Destination?) {
+        guard !isStrengthNavigationLocked else { return }
         if destination == .checkIns { checkInSelection = .allScenes }
         if destination == .accountBalances { balanceAccountID = nil }
         if destination == .monthlyCashFlow { cashFlowMetric = .netIncome }
@@ -137,7 +158,8 @@ struct RootView: View {
     }
 
     private func open(_ url: URL) {
-        guard url.scheme == "logbook", url.host == "scene" || url.host == "check-ins" else { return }
+        guard !isStrengthNavigationLocked,
+              url.scheme == "logbook", url.host == "scene" || url.host == "check-ins" else { return }
         checkInSelection = LogbookLinks.sceneID(from: url).map(CheckInSelection.scene) ?? .allScenes
         selection = .checkIns
     }

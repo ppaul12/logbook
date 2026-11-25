@@ -7,12 +7,15 @@ struct DestinationView: View {
     @Binding var balanceCurrency: LedgerCurrency?
     @Binding var checkInSelection: CheckInSelection
     @Binding var balanceAccountID: String?
+    @Binding var strengthNavigation: StrengthTrainingNavigation
     @Environment(LogbookStore.self) private var store
 
     var body: some View {
         switch destination {
         case .checkIns:
             CheckInsView(selection: $checkInSelection)
+        case .strengthTraining:
+            StrengthTrainingView(navigation: $strengthNavigation)
         case .accountBalances:
             AccountBalancesView(accountID: $balanceAccountID, currency: Binding(
                 get: { balanceCurrency ?? store.preferences.defaultCurrency },
